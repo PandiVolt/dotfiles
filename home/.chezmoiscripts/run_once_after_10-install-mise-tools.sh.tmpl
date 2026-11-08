@@ -1,0 +1,11 @@
+#!/bin/bash
+# Install the tools declared in ~/.config/mise/conf.d/dotfiles.toml. The
+# manifest's hash below reruns this script when the manifest changes.
+# mise-manifest-sha: {{ include "dot_config/mise/conf.d/dotfiles.toml" | sha256sum }}
+{{- $tools := (include "dot_config/mise/conf.d/dotfiles.toml" | fromToml).tools }}
+
+set -euo pipefail
+
+# Install only this repo's tools; other mise entries remain the user's.
+echo "Installing dotfiles mise tools..."
+mise install --yes{{ range $name, $_ := $tools }} {{ $name }}{{ end }}

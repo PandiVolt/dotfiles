@@ -1,0 +1,92 @@
+{{- /* chezmoi:modify-template */ -}}
+{{- /*
+  Hermes also writes ~/.hermes/config.yaml (the setup wizard, `/model`,
+  `hermes config set`), so this template declares the chosen keys and keeps
+  everything else. When every declared key already has its value, the file
+  passes through byte for byte. Otherwise it is rewritten with the declared
+  values, which drops the comments from Hermes' template and sorts the keys.
+  Apply script 50 installs Hermes, which seeds this file, before files are
+  applied. Hermes reads the file when it starts, so script 60 restarts the
+  gateway when it changes.
+*/ -}}
+{{- if not .chezmoi.stdin -}}
+{{-   fail "~/.hermes/config.yaml is missing; Hermes' installer (apply script 50) seeds it" -}}
+{{- end -}}
+{{- $config := fromYaml .chezmoi.stdin -}}
+{{- $declared := dict -}}
+{{- $declared = set $declared "model.provider" "openai-codex" -}}
+{{- $declared = set $declared "model.default" "gpt-6-luna" -}}
+{{- $declared = set $declared "model.base_url" "https://chatgpt.com/backend-api/codex" -}}
+{{- $declared = set $declared "agent.reasoning_effort" "high" -}}
+{{- $declared = set $declared "agent.max_turns" 150 -}}
+{{- /* Never borrow the Codex CLI's login: sharing its refresh token breaks both. */ -}}
+{{- $declared = set $declared "auth.adopt_external_logins" false -}}
+{{- /* The brain holds memory; Hermes' own memory stays off. */ -}}
+{{- $declared = set $declared "memory.memory_enabled" false -}}
+{{- $declared = set $declared "memory.user_profile_enabled" false -}}
+{{- /* The version is pinned by apply script 50. */ -}}
+{{- $declared = set $declared "updates.check" false -}}
+{{- /* Tools per platform. Telegram leaves out session_search, so one topic
+       cannot search another's conversation. */ -}}
+{{- $declared = set $declared "platform_toolsets.cli" (list "browser" "clarify" "code_execution" "connections" "cronjob" "delegation" "file" "image_gen" "session_search" "skills" "terminal" "todo" "tts" "vision" "web") -}}
+{{- $declared = set $declared "platform_toolsets.telegram" (list "browser" "clarify" "code_execution" "connections" "cronjob" "delegation" "file" "image_gen" "skills" "terminal" "todo" "tts" "vision" "web") -}}
+{{- $declared = set $declared "image_gen.provider" "openai-codex" -}}
+{{- $declared = set $declared "image_gen.model" "gpt-image-2-medium" -}}
+{{- /* Scan commands with the tirith from the mise manifest. A missing or
+       failing scanner counts as a finding instead of letting the command
+       through: the owner is asked to approve it, and where nobody can
+       approve, such as a cron job, it is refused. */ -}}
+{{- $declared = set $declared "security.tirith_path" "~/.local/share/mise/shims/tirith" -}}
+{{- $declared = set $declared "security.tirith_fail_open" false -}}
+{{- /* Web search through Brave's free plan; the key is in ~/.hermes/.env. */ -}}
+{{- $declared = set $declared "web.backend" "brave-free" -}}
+{{- $declared = set $declared "browser.cloud_provider" "local" -}}
+{{- /* The browser vault reads 1Password through with-op, which loads the token
+       for each call, so the token stays out of Hermes' process. Hermes treats
+       the backend as locked until the variable named here is set, so it names
+       a non-secret marker from ~/.hermes/.env. Hermes passes the marker to
+       with-op as OP_SERVICE_ACCOUNT_TOKEN, and with-op replaces it. */ -}}
+{{- $declared = set $declared "vault.onepassword.enabled" true -}}
+{{- $declared = set $declared "vault.onepassword.binary_path" (joinPath .chezmoi.homeDir ".local/bin/with-op") -}}
+{{- $declared = set $declared "vault.onepassword.service_account_token_env" "HERMES_OP_AUTH_IN_WRAPPER" -}}
+{{- /* The brain is the agent's home: gateway sessions start in it and read
+       its AGENTS.md, and skills load from its skills/, where skills the agent
+       creates are saved too, not in ~/.hermes, which a rebuild does not keep.
+       Absolute paths: Hermes passes terminal.cwd on unexpanded. */ -}}
+{{- $brain := joinPath .chezmoi.homeDir "brain" -}}
+{{- $declared = set $declared "terminal.cwd" $brain -}}
+{{- $declared = set $declared "skills.create_dir" (joinPath $brain "skills") -}}
+{{- /* The command/preload scanner reads external_dirs, not create_dir.
+       Append the canonical workspace root and preserve other skill roots. */ -}}
+{{- $externalSkills := dig "skills" "external_dirs" (list) $config -}}
+{{- if kindIs "string" $externalSkills -}}
+{{-   $externalSkills = list $externalSkills -}}
+{{- else if not (kindIs "slice" $externalSkills) -}}
+{{-   fail "skills.external_dirs must be a path or list of paths" -}}
+{{- end -}}
+{{- if not (has (joinPath $brain "skills") $externalSkills) -}}
+{{-   $externalSkills = append $externalSkills (joinPath $brain "skills") -}}
+{{- end -}}
+{{- $declared = set $declared "skills.external_dirs" $externalSkills -}}
+{{- $converged := true -}}
+{{- range $path, $value := $declared -}}
+{{-   $node := $config -}}
+{{-   range $key := splitList "." $path -}}
+{{-     if kindIs "map" $node -}}
+{{-       $node = get $node $key -}}
+{{-     else -}}
+{{-       $node = "" -}}
+{{-     end -}}
+{{-   end -}}
+{{-   if ne (toJson $node) (toJson $value) -}}
+{{-     $converged = false -}}
+{{-   end -}}
+{{- end -}}
+{{- if $converged -}}
+{{-   .chezmoi.stdin -}}
+{{- else -}}
+{{-   range $path, $value := $declared -}}
+{{-     $config = setValueAtPath $path $value $config -}}
+{{-   end -}}
+{{-   toYaml $config -}}
+{{- end -}}
