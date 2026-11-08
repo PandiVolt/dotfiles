@@ -97,7 +97,7 @@ if [ -n "$new_stale" ]; then
 fi
 
 echo "Missing passwordless sudo rule"
-SUDOERS_FILE=/etc/sudoers.d/05-dotfiles-nopasswd
+SUDOERS_FILE=/etc/sudoers.d/49-dotfiles-nopasswd
 sudo -n rm -f "$SUDOERS_FILE"
 check "sudo asks for a password without the rule" bash -c '! sudo -k -n true 2>/dev/null'
 check "reapply restores the rule with the account password from 1Password" reapply

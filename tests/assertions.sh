@@ -88,7 +88,7 @@ check "chezmoi config does not persist the token" \
   bash -c '! grep -q "ops_" "$1"' _ "$HOME/.config/chezmoi/chezmoi.toml"
 
 echo "Sudo"
-SUDOERS_FILE=/etc/sudoers.d/05-dotfiles-nopasswd
+SUDOERS_FILE=/etc/sudoers.d/49-dotfiles-nopasswd
 check "sudo runs without a password (rule, not a cached timestamp)" sudo -k -n true
 check "sudo -v passes without a password (omarchy-update runs it)" sudo -k -n -v
 check "sudoers rule is root:root 0440" \
